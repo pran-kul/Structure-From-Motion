@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+	<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                padding: 20px;
+                margin: 10px;
+                background-color: #f4f4f4;
+            }
+            h1, h2 {
+                color: #333;
+            }
+            p, li {
+                line-height: 1.6;
+            }
+			.grid-container {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 20px;
+			transform: scale(0.65);  /* scale down to 90% of the original size */
+			margin: 0;
+    		padding: 0;
+			}
+			.grid-item {
+				aspect-ratio: 1 / 1;
+				width: 100%;
+				height: 100%;
+				position: relative;
+				background-color: #d1d1d1;
+                border: 1px solid #ddd;
+              
+                box-shadow: 2px 2px 15px 0px rgba(0,0,0,0.1);
+				
+			}
+        
+            ul {
+                margin-left: 20px;
+            }
+            pre {
+                background-color: #f8f8f8;
+                border: 1px solid #363636;
+                padding: 10px;
+                overflow: auto;
+            }
+        </style>
+        <meta charset="utf-8">
+        <title>Assignment 2</title>
+        <script type="importmap">
+			
+            {
+              "imports": {
+                "three": "https://unpkg.com/three@0.147.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.147.0/examples/jsm/",
+				"three/addons/PLYLoader": "https://unpkg.com/three@0.147.0/examples/jsm/loaders/PLYLoader.js"
+              }
+            }
+        </script>
+    </head>
+
+	<body>
+		<h1 style="text-align: center;">Assignment 2 CSCI-599</h1>
+		<h5 style="text-align: center;">Submitted by: Pranav Anand Kulkarni (USC ID: 9882571861)</h3>
+		<br><br>
+		<h2>Structure From Motion</h2>
+		<p>
+			<b>Algorithm: </b>
+			<ul>
+				<li>Baseline Pose Estimation: Estimate relative rotation and translation between the first two images.</li>
+				<li>Baseline Triangulation: Estimate 3D coordinates of matched points between the first two images.</li>
+				<li>Point Cloud Generation and Reprojection Error Evaluation: Generate point cloud, compute reprojection errors for the first two images.</li>
+				<li>Pose Estimation and Triangulation for New Views: Estimate poses and triangulate points for subsequent images.</li>
+				<li>Point Cloud Update and Reprojection Error Evaluation for New Views: Update point cloud, compute reprojection errors for new views.</li>
+				<li>Mean Reprojection Error Calculation: Calculate the mean reprojection error for all images.</li>
+			<br><br>
+			<b>Implementation Details:</b>
+			<p><b>A) TODO : Process the new view</b></p>
+				<p>
+					In the <code>trangulate_new_view</code> method, the goal is to triangulate the 3D coordinates of points in a new view based on matches with previous views.
+					<ol>
+					  <li>Loading Features: Features (keypoints and descriptors) are loaded for the previous view (<code>prev_name</code>) and the new view (<code>name</code>). Keypoints are denoted by <code>kp1</code> and <code>kp2</code>, and descriptors are denoted by <code>desc1</code> and <code>desc2</code>.</li>
+					  <li>Filtering Matches: Matches between the previous view and the new view are filtered to exclude points already present in the 3D reconstruction (<code>prev_name_ref[match.queryIdx] &lt; 0</code>). These matches are stored in the <code>matches</code> variable.</li>
+					  <li>RANSAC and Fundamental Matrix Estimation: RANSAC is used to estimate the fundamental matrix (<code>F</code>) between the two views. Matches are filtered using the RANSAC mask (<code>mask</code>).</li>
+					  <li>Camera Poses: Rotation (<code>R1</code>, <code>R2</code>) and translation (<code>t1</code>, <code>t2</code>) matrices for the previous view and the new view are retrieved from <code>self.image_data</code>.</li>
+					  <li>Triangulation: The <code>triangulation</code> function is called to triangulate the 3D coordinates of matched points between the two views. Triangulation is performed using the OpenCV function <code>cv2.triangulatePoints</code>.</li>
+					  <li>Updating Point Cloud and Reference: Triangulated points are added to the point cloud (<code>self.point_cloud</code>). Additionally, the reference indices for the new view are updated to include the newly triangulated points using the <code>update_3D_reference</code> function.</li>
+					  <li>Handling No Matches: If there are no matches between the previous view and the new view, a message is printed indicating that the views are being skipped.</li>
+					</ol>
+				</p>
+			</p>	
+					
+			<pre><code>
+				def trangulate_new_view(self, name): 
+
+				def triangulation(img1pts, img2pts, R1, t1, R2, t2): 
+					"""
+					Perform triangulation to estimate the 3D coordinates of points in the scene.
+		
+					Args:
+						img1pts (numpy.ndarray): 2D image points in the first image.
+						img2pts (numpy.ndarray): 2D image points in the second image.
+						R1 (numpy.ndarray): Rotation matrix of the first camera.
+						t1 (numpy.ndarray): Translation vector of the first camera.
+						R2 (numpy.ndarray): Rotation matrix of the second camera.
+						t2 (numpy.ndarray): Translation vector of the second camera.
+		
+					Returns:
+						numpy.ndarray: 3D coordinates of the triangulated points.
+		
+					"""
+					img1ptsHom = cv2.convertPointsToHomogeneous(img1pts)[:,0,:]
+					img2ptsHom = cv2.convertPointsToHomogeneous(img2pts)[:,0,:]
+		
+					img1ptsNorm = (np.linalg.inv(self.K).dot(img1ptsHom.T)).T
+					img2ptsNorm = (np.linalg.inv(self.K).dot(img2ptsHom.T)).T
+		
+					img1ptsNorm = cv2.convertPointsFromHomogeneous(img1ptsNorm)[:,0,:]
+					img2ptsNorm = cv2.convertPointsFromHomogeneous(img2ptsNorm)[:,0,:]
+		
+					pts4d = cv2.triangulatePoints(np.hstack((R1,t1)),np.hstack((R2,t2)),
+													img1ptsNorm.T,img2ptsNorm.T)
+					pts3d = cv2.convertPointsFromHomogeneous(pts4d.T)[:,0,:]
+		
+					return pts3d
+		
+				
+				def update_3D_reference(ref2, img2idx, upp_limit, low_limit=0): 
+					ref2[img2idx] = np.arange(low_limit,upp_limit)
+		
+					return  ref2
+		
+				"""
+				Triangulates new view based on matches with previous views.
+		
+				Args:
+					name (str): Name of the new view.
+		
+				Returns:
+					None
+				"""
+				for prev_name in self.image_data.keys(): 
+					if prev_name != name: 
+						kp1, desc1 = self.load_features(prev_name)
+						kp2, desc2 = self.load_features(name)  
+		
+						prev_name_ref = self.image_data[prev_name][-1]
+						matches = self.load_matches(prev_name,name)
+						matches = [match for match in matches if prev_name_ref[match.queryIdx] < 0]
+		
+						if len(matches) > 0: 
+							# Process the new view
+		
+							# Get the matched points in the new view and the previous view and mask using ransac
+							img1pts, img2pts, img1idx, img2idx = self.get_aligned_matches(kp1,desc1,kp2,desc2,matches)
+							F,mask = cv2.findFundamentalMat(img1pts,img2pts,method=opts.fund_method,ransacReprojThreshold=opts.outlier_thres,confidence=opts.fund_prob)
+							mask = mask.astype(bool).flatten()
+						  
+		
+							# Get the rotation and translation of the new view and the previous view
+							R1, t1, ref1 = self.image_data[prev_name]
+							R2, t2, ref2 = self.image_data[name]
+		
+							# Triangulate the points
+							new_point_cloud = triangulation(img1pts[mask], img2pts[mask], R1, t1, R2, t2)
+		
+							# Add the unique points to the point cloud
+							self.point_cloud = np.concatenate((self.point_cloud, new_point_cloud), axis=0)
+		
+							updated_ref = update_3D_reference(ref2, img2idx[mask],  self.point_cloud.shape[0], self.point_cloud.shape[0]-new_point_cloud.shape[0])
+							self.image_data[name][-1] = updated_ref
+		
+						else: 
+							print('skipping {} and {}'.format(prev_name, name))
+			</code></pre>
+
+			<p><b>B) TODO: Calculate and plot Reprojection Error</b></p>
+			<p>
+				<ol>
+					<li>Load Camera Parameters and 3D References: Load the rotation matrix (<code>R</code>), translation vector (<code>t</code>), and 3D references (<code>ref</code>) for the specified image from <code>self.image_data</code>.</li>
+					<li>Load 2D Keypoints: Load the 2D keypoints (<code>kp</code>) and descriptors (<code>desc</code>) for the specified image using the <code>load_features</code> method.</li>
+					<li>Initialize Variables: Initialize the total error to 0 and create empty lists to store image points (<code>img_pts</code>) and reprojected points (<code>reproj_pts</code>).</li>
+					<li>Iterate Over 3D Points: Iterate over all 3D points in the point cloud.</li>
+					<li>Project 3D Points to 2D: Project each 3D point to 2D using the camera parameters (<code>R</code>, <code>t</code>, <code>K</code>). Calculate the reprojection error as the distance between the projected point and the corresponding 2D point.</li>
+					<li>Calculate Average Error: Calculate the average reprojection error by dividing the total error by the number of 3D points.</li>					
+				</ol>
+			</p>
+			<pre><code>
+				def compute_reprojection_error(self, name): 
+				"""
+				Computes the reprojection error for a given image and also visualize the reprojection as PNG/JPG plot.
+		
+				Parameters:
+				- name (str): The name of the image.
+		
+				Returns:
+				- err (float): The average reprojection error.
+				"""
+		
+				# Load the camera parameters and 3D references for the image
+				R, t, ref = self.image_data[name]
+		
+				# Load the 2D keypoints for the image
+				kp, desc = self.load_features(name)
+		
+				# Initialize the total error to 0
+				total_error = 0
+				img_pts = []
+				reproj_pts = []
+		
+				# Iterate over all 3D points
+				for j in range(len(self.point_cloud)):
+		
+					# If the 3D point corresponds to a 2D point in the image
+					if j in ref:
+					   
+						# Get the index of the 2D point corresponding to the 3D point
+						x_index = np.where(ref == j)[0]
+		
+						# If the 3D point does not correspond to a 2D point in the image, skip this iteration
+						if x_index.size == 0:
+							continue
+		
+						# Get the 2D point
+						x2D = kp[x_index[0]].pt
+						img_pts.append(x2D)
+						# Get the 3D point
+						X3D = self.point_cloud[j]
+						X_homogeneous = np.append(X3D, 1)
+						# Project the 3D point to 2D
+						Rt = np.hstack((R, t))
+						x_homogeneous = self.K @ Rt @ X_homogeneous
+						X2D_projected = x_homogeneous[:2] / x_homogeneous[2]
+						reproj_pts.append(X2D_projected)
+		
+						# Calculate the distance between the projected point and the 2D point
+						error = np.linalg.norm(x2D - X2D_projected[:2])
+						# Add the error to the total error
+						total_error += error
+		
+				# Calculate the average error
+				err = total_error / len(self.point_cloud)
+		
+				# TODO: PLOT here
+				if self.opts.plot_error: 
+					fig,ax = plt.subplots()
+					image = cv2.imread(os.path.join(self.images_dir, name+'.jpg'))[:,:,::-1]
+					ax = draw_correspondences(image, img_pts, reproj_pts, ax)
+					ax.set_title('reprojection error = {}'.format(err))
+					fig.savefig(os.path.join(self.out_err_dir, '{}.png'.format(name)))
+					plt.close(fig)
+					
+				return err
+				
+			</code></pre>
+			<p><b>TODO: C) Draw Correspondence</b></p>
+			<p>
+				<ol>
+					<li>Show Image: Display the input image on the specified axis.</li>
+					<li>Draw Correspondences:
+						<ul>
+							<li>Draw Original 2D Points: Plot the ground truth 2D points on the image as green dots.</li>
+							<li>Draw Reprojected 2D Points: Plot the reprojected 2D points on the image as red dots.</li>
+							<li>Draw Connecting Lines: Draw lines between each original 2D point and its corresponding reprojected 2D point.</li>
+						</ul>
+					</li>
+					<li>Return Axis: Return the modified Matplotlib axis object.</li>
+				</ol>
+			</p>
+			<code><pre>
+				def draw_correspondences(img, img_pts, reproj_pts, ax, drawOnly=50): 
+				"""
+				Draws correspondence between ground truth and reprojected feature point
+
+				Args: 
+				ptsTrue, ptsReproj: (n,2) numpy array
+				ax: matplotlib axis object
+				drawOnly: max number of random points to draw
+
+				Returns: 
+				ax: matplotlib axis object
+				"""
+				ax.imshow(img)
+				
+				# TODO: draw correspondence between ptsTrue and ptsReproj
+
+				# Draw the original 2D points in green
+				for pt in img_pts:
+					ax.plot(pt[0], pt[1], 'go')
+
+				# Draw the reprojected 2D points in red
+				for pt in reproj_pts:
+					ax.plot(pt[0], pt[1], 'ro')
+
+				# Draw lines between the original 2D points and the reprojected 2D points
+				for img_pt, reproj_pt in zip(img_pts, reproj_pts):
+					ax.plot([img_pt[0], reproj_pt[0]], [img_pt[1], reproj_pt[1]], 'b-')
+
+
+				return ax
+		    </code></pre>
+			<br><br>
+			<b>Runtime :  </b> 
+			<ul>
+				<li>O(n^2) for baseline pose estimation </li>
+				<li>O(m) for triangulation weher m is number of matched points</li>
+				<li>O(n^2) for pose estimation of new view</li>
+				<li>O(p) to calculate reprojection error where p is the number of 3D points</li>
+			</ul>
+			<br><br>
+			<br><br>
+		</p>
+		
+		<p> <b>Reconstruction Results : </b></p>
+		<div class="grid-container">
+			<div class="grid-item">
+			<center>
+			<p> COLMAP Reconstruction (Benchmark) </p>
+			</center>
+			<div id="container1" data-model-path="../assignments/assignment2/assets/assignment2/results/fountain-P11/point-clouds/fused.ply"></div>
+			<script type="module" src="../js/assignment2.js"></script>
+			</div>
+			<div class="grid-item">
+			<center>
+			<p> Assignment Reconstruction with 2 views</p>
+			</center>
+			<div id="container2" data-model-path="../assignments/assignment2/assets/assignment2/results/fountain-P11/point-clouds/cloud_2_view.ply"></div>
+			<script type="module" src="../js/assignment2.js"></script>
+			</div>
+			<div class="grid-item">
+			<center>
+			<p> Assignment Reconstruction with 6 views</p>
+			</center>
+			<div id="container3" data-model-path="../assignments/assignment2/assets/assignment2/results/fountain-P11/point-clouds/cloud_6_view.ply"></div>
+			<script type="module" src="../js/assignment2.js"></script>
+			</div>
+			<div class="grid-item">
+			<center>
+			<p> Assignment Reconstruction with 11 views (Final) </p>
+			</center>
+			<div id="container4"  data-model-path="../assignments/assignment2/assets/assignment2/results/fountain-P11/point-clouds/cloud_11_view.ply"></div>
+			<script type="module" src="../js/assignment2.js"></script>
+			</div>
+		</div>
+
+		<p> <b>Reconstruction Errors : </b></p>
+		<div class="grid-container">
+			<div class="grid-item">
+			<center>
+			<p> Reconstruction with 2 views</p>
+			</center>
+			<img src="../assignments/assignment2/assets/assignment2/results/fountain-P11/errors/0000.png" alt="2 view error" style="width:100%">
+			</div>
+			<div class="grid-item">
+			<center>
+			<p> Reconstruction with 6 views</p>
+			</center>
+			<img src="../assignments/assignment2/assets/assignment2/results/fountain-P11/errors/0005.png" alt="6 view error" style="width:100%">
+			</div>
+			<div class="grid-item">
+				<center>
+				<p> Reconstruction with 7 views</p>
+				</center>
+				<img src="../assignments/assignment2/assets/assignment2/results/fountain-P11/errors/0007.png" alt="8 view error" style="width:100%">
+				</div>
+			<div class="grid-item">
+			<center>
+			<p> Reconstruction with 11 views (Final) </p>
+			</center>
+			<img src="../assignments/assignment2/assets/assignment2/results/fountain-P11/errors/0010.png" alt="11 view error" style="width:100%">
+		</div>
+
+	</body>
+</html>
